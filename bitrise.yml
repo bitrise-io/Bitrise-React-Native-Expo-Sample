@@ -1,0 +1,118 @@
+---
+format_version: '8'
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+project_type: react-native
+trigger_map:
+- push_branch: "*"
+  workflow: primary
+- pull_request_source_branch: "*"
+  workflow: primary
+workflows:
+  deploy:
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@4: {}
+    - cache-pull@2: {}
+    - npm@1:
+        inputs:
+        - workdir: "$WORKDIR"
+        - cache_local_deps: 'true'
+        - command: install
+    - script@1:
+        title: Clean Up Empty Dirs
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            # fail if any commands fails
+            set -e
+            # debug log
+            set -x
+
+            rm -rf ios
+            rm -rf android
+    - expo-detach@1:
+        inputs:
+        - project_path: "$WORKDIR"
+    - script@1:
+        title: Remove Push Notifications
+        inputs:
+        - content: "#!/usr/bin/env bash\nset -ex\n\ncat $BITRISE_SOURCE_DIR/ios/TodoMVC/todomvc.entitlements\n\ncat
+            >$BITRISE_SOURCE_DIR/ios/TodoMVC/todomvc.entitlements <<EOL\nline 1, <?xml
+            version=\"1.0\" encoding=\"UTF-8\"?>\nline 2, <!DOCTYPE plist PUBLIC \"-//Apple//DTD
+            PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\nline
+            3, <plist version=\"1.0\">\nline 4, <dict/>\nline 5, </plist>\nline 6
+            line\n... \nEOL\n\ncat $BITRISE_SOURCE_DIR/ios/TodoMVC/todomvc.entitlements"
+    - cocoapods-install@1: {}
+    - certificate-and-profile-installer@1: {}
+    - xcode-archive@3:
+        inputs:
+        - project_path: "$BITRISE_PROJECT_PATH"
+        - scheme: "$BITRISE_SCHEME"
+        - export_method: "$BITRISE_EXPORT_METHOD"
+        - team_id: "$BITRISE_TEAM"
+        - force_code_sign_identity: "$BITRISE_CODE_SIGNING_IDENTITY"
+        - force_provisioning_profile: "$BITRISE_PROFILE_ID"
+        - xcodebuild_options: CODE_SIGN_STYLE="Manual"
+        - configuration: Release
+    - install-missing-android-tools@2:
+        inputs:
+        - gradlew_path: "$PROJECT_LOCATION/gradlew"
+    - android-build@0:
+        inputs:
+        - project_location: "$PROJECT_LOCATION"
+        - module: "$MODULE"
+        - variant: "$VARIANT"
+    - deploy-to-bitrise-io@1: {}
+    - cache-push@2: {}
+  primary:
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@4: {}
+    - script@1:
+        title: Do anything with Script step
+    - npm@1:
+        inputs:
+        - workdir: "$WORKDIR"
+        - command: install
+    - npm@1:
+        inputs:
+        - workdir: "$WORKDIR"
+        - command: test
+    - deploy-to-bitrise-io@1: {}
+app:
+  envs:
+  - opts:
+      is_expand: false
+    USES_EXPO_KIT: 'no'
+  - opts:
+      is_expand: false
+    BITRISE_PROJECT_PATH: ios/TodoMVC.xcworkspace
+  - opts:
+      is_expand: false
+    BITRISE_SCHEME: TodoMVC
+  - opts:
+      is_expand: false
+    BITRISE_EXPORT_METHOD: development
+  - opts:
+      is_expand: false
+    WORKDIR: "."
+  - opts:
+      is_expand: false
+    PROJECT_LOCATION: "./android"
+  - opts:
+      is_expand: false
+    MODULE: app
+  - opts:
+      is_expand: false
+    VARIANT: Debug
+  - opts:
+      is_expand: false
+    BITRISE_TEAM: 72SA8V3WYL
+  - opts:
+      is_expand: false
+    BITRISE_PROFILE_ID: b103a1f0-1f51-4d53-a41f-c08719676e94
+  - opts:
+      is_expand: false
+    BITRISE_CODE_SIGNING_IDENTITY: 'iPhone Developer: Dev Portal Bot Bitrise (E89JV3W9K4)'
